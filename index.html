@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AJG Extract — our own zipper</title>
+<style>
+  :root{ --bg:#171a21; --panel:#1b2838; --panel2:#2a475e; --accent:#66c0f4; --text:#c7d5e0; --dim:#8f98a3; --bright:#fff; --danger:#ff9d8a; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--text); font-family:"Motiva Sans",Arial,Helvetica,sans-serif; }
+  header{ background:var(--panel); padding:14px 20px; display:flex; align-items:baseline; gap:12px; border-bottom:1px solid #000; }
+  header h1{ margin:0; font-size:22px; color:var(--bright); letter-spacing:1px; }
+  header h1 span{ color:var(--accent); }
+  header .sub{ color:var(--dim); font-size:13px; }
+  main{ max-width:860px; margin:0 auto; padding:20px; }
+  .tabs{ display:flex; gap:8px; margin-bottom:16px; }
+  .tabs button{ background:var(--panel); color:var(--text); border:1px solid #000; padding:10px 22px; font-size:15px; cursor:pointer; border-radius:3px 3px 0 0; }
+  .tabs button.active{ background:var(--panel2); color:var(--bright); border-bottom:2px solid var(--accent); }
+  .panel{ background:var(--panel); border:1px solid #000; padding:18px; border-radius:3px; }
+  .drop{ border:2px dashed var(--panel2); border-radius:6px; padding:34px 16px; text-align:center; color:var(--dim); font-size:15px; margin-bottom:14px; }
+  .drop.over{ border-color:var(--accent); color:var(--accent); background:#1b2838; }
+  .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:12px 0; }
+  input[type=text]{ background:#0f1922; border:1px solid var(--panel2); color:var(--text); padding:9px 10px; border-radius:3px; font-size:14px; }
+  .btn{ background:var(--accent); color:#0f1922; border:0; padding:10px 18px; font-size:15px; font-weight:700; cursor:pointer; border-radius:3px; }
+  .btn:disabled{ opacity:.45; cursor:default; }
+  .btn-ghost{ background:var(--panel2); color:var(--text); border:0; padding:9px 14px; font-size:14px; cursor:pointer; border-radius:3px; }
+  .btn-sm{ padding:5px 10px; font-size:13px; }
+  .err{ color:var(--danger); font-size:13px; min-height:18px; margin-top:8px; }
+  .ok{ color:#7fd08a; font-size:13px; min-height:18px; margin-top:8px; }
+  .filelist{ margin:10px 0; }
+  .file-row{ display:flex; align-items:center; gap:10px; background:#0f1922; border:1px solid #000; padding:8px 10px; margin-bottom:6px; border-radius:3px; }
+  .file-row b{ color:var(--bright); font-weight:400; word-break:break-all; }
+  .file-row .size{ color:var(--dim); font-size:12px; white-space:nowrap; }
+  .file-row .sp{ flex:1; }
+  .info{ color:var(--dim); font-size:13px; line-height:1.6; }
+  .info b{ color:var(--text); }
+  .hint{ color:var(--dim); font-size:12px; }
+  footer{ text-align:center; color:var(--dim); font-size:12px; padding:18px; }
+  a{ color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>AJG <span>Extract</span></h1>
+  <span class="sub">our own zipper — .ajg-extract files</span>
+</header>
+<main>
+  <div class="tabs">
+    <button id="tab-zip" class="active" type="button">Zip files</button>
+    <button id="tab-extract" type="button">Extract</button>
+  </div>
+
+  <!-- ============ ZIP ============ -->
+  <section class="panel" id="panel-zip">
+    <div class="drop" id="zip-drop">Drop files here, or choose them below</div>
+    <div class="row">
+      <button class="btn-ghost" type="button" id="zip-choose">Choose files…</button>
+      <input type="file" id="zip-input" multiple hidden>
+      <span class="hint" id="zip-count">No files yet.</span>
+    </div>
+    <div class="filelist" id="zip-list"></div>
+    <div class="row">
+      <label for="zip-name">Archive name</label>
+      <input type="text" id="zip-name" value="archive" size="20">
+      <span class="hint">.ajg-extract is added for you</span>
+    </div>
+    <div class="row">
+      <button class="btn" type="button" id="zip-go" disabled>Create .ajg-extract</button>
+      <button class="btn-ghost" type="button" id="zip-clear">Clear</button>
+    </div>
+    <div class="err" id="zip-err"></div>
+    <div class="ok" id="zip-ok"></div>
+    <p class="info">Files stay on your device — zipping happens right here in the browser, nothing is uploaded. Each file is compressed and packed into one <b>.ajg-extract</b> archive.</p>
+  </section>
+
+  <!-- ============ EXTRACT ============ -->
+  <section class="panel" id="panel-extract" hidden>
+    <div class="drop" id="extract-drop">Drop a .ajg-extract file here, or choose one below</div>
+    <div class="row">
+      <button class="btn-ghost" type="button" id="extract-choose">Choose .ajg-extract file…</button>
+      <input type="file" id="extract-input" accept=".ajg-extract" hidden>
+    </div>
+    <div class="err" id="extract-err"></div>
+    <div id="extract-info"></div>
+    <div class="filelist" id="extract-list"></div>
+    <div class="row" id="extract-actions" hidden>
+      <button class="btn" type="button" id="extract-all">Download all</button>
+      <span class="hint">Each file downloads separately.</span>
+    </div>
+    <p class="info">Only real <b>.ajg-extract</b> archives open here — a renamed zip or a random file gets rejected, not guessed at.</p>
+  </section>
+</main>
+<footer>AJG Extract · format v1 · made by Avery + Muse</footer>
+
+<script>
+"use strict";
+/* ============================================================
+   .ajg-extract format v1
+   [0..3]   magic bytes "AJGE"
+   [4]      version (0x01)
+   [5..8]   manifest length, uint32 little-endian
+   [9..]    manifest JSON (utf-8): { files: [{ name, size, csize }] }
+   [...]    concatenated raw-deflate blobs, in manifest order
+   ============================================================ */
+const MAGIC = "AJGE";
+const VERSION = 1;
+const EXT = ".ajg-extract";
+
+function u32le(n){
+  const b = new Uint8Array(4);
+  new DataView(b.buffer).setUint32(0, n, true);
+  return b;
+}
+function readU32le(bytes, off){
+  return new DataView(bytes.buffer, bytes.byteOffset + off, 4).getUint32(0, true);
+}
+async function deflateData(data){
+  const cs = new CompressionStream("deflate");
+  const out = new Blob([data]).stream().pipeThrough(cs);
+  return new Uint8Array(await new Response(out).arrayBuffer());
+}
+async function inflateData(data){
+  const ds = new DecompressionStream("deflate");
+  const out = new Blob([data]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(out).arrayBuffer());
+}
+
+/* files: [{ name, data: Uint8Array }] -> Uint8Array (the archive) */
+async function createArchive(files){
+  const entries = [];
+  const blobs = [];
+  for(const f of files){
+    const c = await deflateData(f.data);
+    entries.push({ name: f.name, size: f.data.length, csize: c.length });
+    blobs.push(c);
+  }
+  const manifest = new TextEncoder().encode(JSON.stringify({ files: entries }));
+  const head = new Uint8Array(9);
+  head.set(new TextEncoder().encode(MAGIC), 0);
+  head[4] = VERSION;
+  head.set(u32le(manifest.length), 5);
+  let total = head.length + manifest.length;
+  for(const b of blobs) total += b.length;
+  const out = new Uint8Array(total);
+  let off = 0;
+  out.set(head, off); off += head.length;
+  out.set(manifest, off); off += manifest.length;
+  for(const b of blobs){ out.set(b, off); off += b.length; }
+  return out;
+}
+
+/* bytes: Uint8Array -> { version, files: [{ name, size, csize, data }] } */
+async function readArchive(bytes){
+  if(!bytes || bytes.length < 9) throw new Error("That file is too small to be an .ajg-extract archive.");
+  const magic = new TextDecoder().decode(bytes.slice(0, 4));
+  if(magic !== MAGIC) throw new Error("Not an .ajg-extract file — the magic bytes don't match.");
+  const version = bytes[4];
+  if(version !== VERSION) throw new Error("This archive is format v" + version + " — this app only reads v" + VERSION + ".");
+  const mlen = readU32le(bytes, 5);
+  if(mlen > bytes.length - 9) throw new Error("This archive is cut off — the manifest is longer than the file.");
+  let manifest;
+  try{
+    manifest = JSON.parse(new TextDecoder().decode(bytes.slice(9, 9 + mlen)));
+  }catch(e){
+    throw new Error("This archive's manifest is broken.");
+  }
+  if(!manifest || !Array.isArray(manifest.files)) throw new Error("This archive's manifest is broken.");
+  let off = 9 + mlen;
+  const files = [];
+  for(const entry of manifest.files){
+    if(typeof entry.name !== "string" || typeof entry.size !== "number" || typeof entry.csize !== "number"){
+      throw new Error("This archive's manifest is broken.");
+    }
+    if(off + entry.csize > bytes.length) throw new Error("This archive is cut off — a file's data is missing.");
+    const raw = bytes.slice(off, off + entry.csize);
+    off += entry.csize;
+    let data;
+    try{
+      data = await inflateData(raw);
+    }catch(e){
+      throw new Error("Couldn't decompress \"" + entry.name + "\" — the archive may be damaged.");
+    }
+    if(data.length !== entry.size) throw new Error("Size check failed for \"" + entry.name + "\" — the archive may be damaged.");
+    files.push({ name: entry.name, size: entry.size, csize: entry.csize, data: data });
+  }
+  return { version: version, files: files };
+}
+
+function formatSize(n){
+  if(n < 1024) return n + " B";
+  if(n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  return (n / (1024 * 1024)).toFixed(2) + " MB";
+}
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+function downloadFile(file){
+  downloadBlob(new Blob([file.data]), file.name);
+}
+
+/* ---------- UI ---------- */
+const $ = id => document.getElementById(id);
+let zipFiles = [];       /* [{ name, data: Uint8Array }] */
+let extracted = null;    /* { version, files } from readArchive */
+
+function showTab(which){
+  $("tab-zip").classList.toggle("active", which === "zip");
+  $("tab-extract").classList.toggle("active", which === "extract");
+  $("panel-zip").hidden = which !== "zip";
+  $("panel-extract").hidden = which !== "extract";
+}
+$("tab-zip").addEventListener("click", () => showTab("zip"));
+$("tab-extract").addEventListener("click", () => showTab("extract"));
+
+function renderZipList(){
+  const total = zipFiles.reduce((s, f) => s + f.data.length, 0);
+  $("zip-count").textContent = zipFiles.length === 0
+    ? "No files yet."
+    : zipFiles.length + " file" + (zipFiles.length === 1 ? "" : "s") + " — " + formatSize(total) + " total";
+  $("zip-list").innerHTML = zipFiles.map((f, i) =>
+    '<div class="file-row"><b>' + esc(f.name) + '</b><span class="size">' + formatSize(f.data.length) +
+    '</span><span class="sp"></span><button class="btn-ghost btn-sm" type="button" data-remove="' + i + '">Remove</button></div>'
+  ).join("");
+  $("zip-go").disabled = zipFiles.length === 0;
+  $("zip-list").querySelectorAll("[data-remove]").forEach(btn =>
+    btn.addEventListener("click", () => {
+      zipFiles.splice(Number(btn.getAttribute("data-remove")), 1);
+      renderZipList();
+    }));
+}
+function esc(s){
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+async function addZipFiles(fileList){
+  $("zip-err").textContent = ""; $("zip-ok").textContent = "";
+  for(const file of fileList){
+    try{
+      const buf = new Uint8Array(await file.arrayBuffer());
+      zipFiles.push({ name: file.name, data: buf });
+    }catch(e){
+      $("zip-err").textContent = "Couldn't read \"" + file.name + "\".";
+    }
+  }
+  renderZipList();
+}
+$("zip-choose").addEventListener("click", () => $("zip-input").click());
+$("zip-input").addEventListener("change", e => { addZipFiles(e.target.files); e.target.value = ""; });
+$("zip-drop").addEventListener("dragover", e => { e.preventDefault(); $("zip-drop").classList.add("over"); });
+$("zip-drop").addEventListener("dragleave", () => $("zip-drop").classList.remove("over"));
+$("zip-drop").addEventListener("drop", e => {
+  e.preventDefault(); $("zip-drop").classList.remove("over");
+  if(e.dataTransfer && e.dataTransfer.files.length) addZipFiles(e.dataTransfer.files);
+});
+$("zip-clear").addEventListener("click", () => {
+  zipFiles = []; renderZipList(); $("zip-err").textContent = ""; $("zip-ok").textContent = "";
+});
+$("zip-go").addEventListener("click", async () => {
+  const btn = $("zip-go");
+  $("zip-err").textContent = ""; $("zip-ok").textContent = "";
+  btn.disabled = true;
+  try{
+    const bytes = await createArchive(zipFiles);
+    let name = $("zip-name").value.trim() || "archive";
+    if(!name.toLowerCase().endsWith(EXT)) name += EXT;
+    downloadBlob(new Blob([bytes]), name);
+    const total = zipFiles.reduce((s, f) => s + f.data.length, 0);
+    $("zip-ok").textContent = "Saved " + name + " — " + zipFiles.length + " file" + (zipFiles.length === 1 ? "" : "s") +
+      ", " + formatSize(total) + " → " + formatSize(bytes.length) + ".";
+  }catch(e){
+    $("zip-err").textContent = "Couldn't make the archive: " + (e && e.message || e);
+  }finally{
+    btn.disabled = zipFiles.length === 0;
+  }
+});
+
+function renderExtracted(){
+  if(!extracted){ $("extract-info").innerHTML = ""; $("extract-list").innerHTML = ""; $("extract-actions").hidden = true; return; }
+  const total = extracted.files.reduce((s, f) => s + f.size, 0);
+  const ctotal = extracted.files.reduce((s, f) => s + f.csize, 0);
+  $("extract-info").innerHTML = '<p class="info">Archive format <b>v' + extracted.version + '</b> · ' +
+    extracted.files.length + ' file' + (extracted.files.length === 1 ? '' : 's') + ' · ' +
+    formatSize(total) + ' uncompressed · ' + formatSize(ctotal) + ' in the archive' +
+    (total > 0 ? ' (' + Math.round((1 - ctotal / total) * 100) + '% smaller)' : '') + '</p>';
+  $("extract-list").innerHTML = extracted.files.map((f, i) =>
+    '<div class="file-row"><b>' + esc(f.name) + '</b><span class="size">' + formatSize(f.size) +
+    '</span><span class="sp"></span><button class="btn-ghost btn-sm" type="button" data-dl="' + i + '">Download</button></div>'
+  ).join("") || '<p class="info">This archive is empty — no files inside.</p>';
+  $("extract-actions").hidden = extracted.files.length === 0;
+  $("extract-list").querySelectorAll("[data-dl]").forEach(btn =>
+    btn.addEventListener("click", () => downloadFile(extracted.files[Number(btn.getAttribute("data-dl"))])));
+}
+async function openExtractFile(file){
+  $("extract-err").textContent = ""; extracted = null; renderExtracted();
+  try{
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    extracted = await readArchive(bytes);
+    renderExtracted();
+  }catch(e){
+    $("extract-err").textContent = e && e.message ? e.message : "Couldn't open that file.";
+  }
+}
+$("extract-choose").addEventListener("click", () => $("extract-input").click());
+$("extract-input").addEventListener("change", e => { if(e.target.files[0]) openExtractFile(e.target.files[0]); e.target.value = ""; });
+$("extract-drop").addEventListener("dragover", e => { e.preventDefault(); $("extract-drop").classList.add("over"); });
+$("extract-drop").addEventListener("dragleave", () => $("extract-drop").classList.remove("over"));
+$("extract-drop").addEventListener("drop", e => {
+  e.preventDefault(); $("extract-drop").classList.remove("over");
+  if(e.dataTransfer && e.dataTransfer.files[0]) openExtractFile(e.dataTransfer.files[0]);
+});
+$("extract-all").addEventListener("click", () => {
+  if(!extracted) return;
+  extracted.files.forEach((f, i) => setTimeout(() => downloadFile(f), i * 300));
+});
+
+renderZipList();
+
+/* test hooks (no browser needed for the format itself) */
+window.AJGExtract = { createArchive, readArchive, MAGIC, VERSION, EXT };
+</script>
+</body>
+</html>
